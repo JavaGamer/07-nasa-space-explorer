@@ -14,7 +14,7 @@ const modalExplanation = document.getElementById('modalExplanation');
 // Set up the date pickers with NASA's valid APOD date range.
 setupDateInputs(startInput, endInput);
 
-const NASA_API_URL = 'https://api.nasa.gov/planetary/apod';
+const NASA_API_URL = 'https://science.nasa.gov/wp-json/wp/v2/apod-basic/';
 const NASA_API_KEY = 'DEMO_KEY';
 let imageEntries = [];
 
@@ -29,24 +29,79 @@ const spaceFacts = [
 // Show one new fact each time the page loads.
 spaceFact.textContent = spaceFacts[Math.floor(Math.random() * spaceFacts.length)];
 
+// Convert a date into the format used by NASA's APOD WordPress API.
+function formatNasaDate(dateValue) {
+  const [year, month, day] = dateValue.split('-');
+  return `${year.slice(2)}${month}${day}`;
+}
+
+// The WordPress API may return text directly or inside a rendered field.
+function getApiText(value) {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  return value?.rendered || '';
+}
+
+// Convert the new API response into the fields used by the gallery.
+function normalizeApodEntry(entry) {
+  const content = getApiText(entry.content);
+  const explanation = getApiText(entry.explanation) || content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+  return {
+    ...entry,
+    date: entry.date?.split('T')[0] || '',
+    title: getApiText(entry.title),
+    explanation,
+    url: entry.url || entry.jetpack_featured_media_url || '',
+    hdurl: entry.hdurl || entry.url || entry.jetpack_featured_media_url || '',
+    media_type: entry.media_type || 'image'
+  };
+}
+
 // Request APOD entries for the selected date range.
 async function getSpaceImages() {
   gallery.innerHTML = '<div class="loading" role="status">🔄 Loading space photos...</div>';
   getImagesButton.disabled = true;
 
   try {
-    const requestUrl = `${NASA_API_URL}?api_key=${NASA_API_KEY}&start_date=${startInput.value}&end_date=${endInput.value}`;
-    const response = await fetch(requestUrl);
-
-    if (!response.ok) {
-      throw new Error('NASA could not provide photos for this date range.');
+    if (!startInput.value || !endInput.value || startInput.value > endInput.value) {
+      throw new Error('Please choose a valid date range.');
     }
 
+    // URLSearchParams safely formats the API query string.
+    const requestParams = new URLSearchParams({
+      api_key: NASA_API_KEY,
+      date_from: formatNasaDate(startInput.value),
+      date_to: formatNasaDate(endInput.value)
+    });
+    const requestUrl = `${NASA_API_URL}?${requestParams.toString()}`;
+    const response = await fetch(requestUrl);
     const responseData = await response.json();
-    imageEntries = Array.isArray(responseData) ? responseData : [responseData];
+
+    if (!response.ok) {
+      throw new Error(responseData.error?.message || 'NASA could not provide photos for this date range.');
+    }
+
+    // A successful response is an APOD object or an array of APOD objects.
+    // Do not render NASA error objects as blank gallery cards.
+    imageEntries = (Array.isArray(responseData) ? responseData : [responseData])
+      .map(normalizeApodEntry)
+      .filter((entry) => entry.date && entry.title && entry.url && entry.media_type);
+
+    if (imageEntries.length === 0) {
+      throw new Error('NASA returned no usable photos for this date range.');
+    }
+
     renderGallery(imageEntries);
   } catch (error) {
-    gallery.innerHTML = `<div class="message error-message" role="alert">${error.message} Please try again.</div>`;
+    gallery.innerHTML = '';
+    const errorMessage = document.createElement('div');
+    errorMessage.className = 'message error-message';
+    errorMessage.setAttribute('role', 'alert');
+    errorMessage.textContent = `${error.message} Please try again.`;
+    gallery.append(errorMessage);
   } finally {
     getImagesButton.disabled = false;
   }
