@@ -152,7 +152,8 @@ function openModal(entry) {
   modalImage.alt = entry.title;
   modalDate.textContent = entry.date;
   modalTitle.textContent = entry.title;
-  modalExplanation.textContent = entry.explanation;
+  // The NASA description includes HTML links and formatting.
+  modalExplanation.innerHTML = entry.explanation;
   imageModal.classList.add('is-open');
   imageModal.setAttribute('aria-hidden', 'false');
   closeModalButton.focus();
