@@ -14,7 +14,7 @@ const modalExplanation = document.getElementById('modalExplanation');
 // Set up the date pickers with NASA's valid APOD date range.
 setupDateInputs(startInput, endInput);
 
-const NASA_API_URL = 'https://api.nasa.gov/planetary/apod';
+const NASA_API_URL = 'https://science.nasa.gov/wp-json/wp/v2/apod-basic/';
 const NASA_API_KEY = 'DEMO_KEY';
 let imageEntries = [];
 
@@ -29,7 +29,13 @@ const spaceFacts = [
 // Show one new fact each time the page loads.
 spaceFact.textContent = spaceFacts[Math.floor(Math.random() * spaceFacts.length)];
 
-// The APOD API may return text directly or inside a rendered field.
+// Convert a date into the format used by NASA's APOD WordPress API.
+function formatNasaDate(dateValue) {
+  const [year, month, day] = dateValue.split('-');
+  return `${year.slice(2)}${month}${day}`;
+}
+
+// The WordPress API may return text directly or inside a rendered field.
 function getApiText(value) {
   if (typeof value === 'string') {
     return value;
@@ -38,18 +44,18 @@ function getApiText(value) {
   return value?.rendered || '';
 }
 
-// Keep the API response shape consistent for the gallery and modal.
+// Convert the new API response into the fields used by the gallery.
 function normalizeApodEntry(entry) {
   const content = getApiText(entry.content);
-  const explanation = getApiText(entry.explanation) || content;
+  const explanation = getApiText(entry.explanation) || content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
   return {
     ...entry,
     date: entry.date?.split('T')[0] || '',
     title: getApiText(entry.title),
     explanation,
-    url: entry.url || '',
-    hdurl: entry.hdurl || entry.url || '',
+    url: entry.url || entry.jetpack_featured_media_url || '',
+    hdurl: entry.hdurl || entry.url || entry.jetpack_featured_media_url || '',
     media_type: entry.media_type || 'image'
   };
 }
@@ -67,8 +73,8 @@ async function getSpaceImages() {
     // URLSearchParams safely formats the API query string.
     const requestParams = new URLSearchParams({
       api_key: NASA_API_KEY,
-      start_date: startInput.value,
-      end_date: endInput.value
+      date_from: formatNasaDate(startInput.value),
+      date_to: formatNasaDate(endInput.value)
     });
     const requestUrl = `${NASA_API_URL}?${requestParams.toString()}`;
     const response = await fetch(requestUrl);
@@ -146,7 +152,7 @@ function openModal(entry) {
   modalImage.alt = entry.title;
   modalDate.textContent = entry.date;
   modalTitle.textContent = entry.title;
-  modalExplanation.innerHTML = entry.explanation;
+  modalExplanation.textContent = entry.explanation;
   imageModal.classList.add('is-open');
   imageModal.setAttribute('aria-hidden', 'false');
   closeModalButton.focus();
