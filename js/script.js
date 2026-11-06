@@ -48,15 +48,17 @@ function getApiText(value) {
 function normalizeApodEntry(entry) {
   const content = getApiText(entry.content);
   const explanation = getApiText(entry.explanation) || content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const mediaType = entry.media_type || 'image';
 
   return {
     ...entry,
     date: entry.date?.split('T')[0] || '',
     title: getApiText(entry.title),
     explanation,
-    url: entry.url || entry.jetpack_featured_media_url || '',
-    hdurl: entry.hdurl || entry.url || entry.jetpack_featured_media_url || '',
-    media_type: entry.media_type || 'image'
+    // The WordPress API's url is the APOD page, while hdurl is the image file.
+    url: entry.url || '',
+    imageUrl: entry.hdurl || entry.image_url || entry.jetpack_featured_media_url || '',
+    media_type: mediaType
   };
 }
 
@@ -88,7 +90,8 @@ async function getSpaceImages() {
     // Do not render NASA error objects as blank gallery cards.
     imageEntries = (Array.isArray(responseData) ? responseData : [responseData])
       .map(normalizeApodEntry)
-      .filter((entry) => entry.date && entry.title && entry.url && entry.media_type);
+      .filter((entry) => entry.date && entry.title && entry.media_type
+        && (entry.media_type === 'video' ? entry.url : entry.imageUrl));
 
     if (imageEntries.length === 0) {
       throw new Error('NASA returned no usable photos for this date range.');
@@ -132,7 +135,7 @@ function renderGallery(apodEntries) {
 
     return `
       <button class="gallery-item image-item" type="button" data-entry-index="${index}">
-        <img src="${entry.url}" alt="${entry.title}" />
+        <img src="${entry.imageUrl}" alt="${entry.title}" />
         <span class="gallery-text">
           <span class="item-date">${entry.date}</span>
           <span class="item-title">${entry.title}</span>
@@ -148,7 +151,7 @@ function renderGallery(apodEntries) {
 
 // Fill the modal with the selected photo and show it.
 function openModal(entry) {
-  modalImage.src = entry.hdurl || entry.url;
+  modalImage.src = entry.imageUrl;
   modalImage.alt = entry.title;
   modalDate.textContent = entry.date;
   modalTitle.textContent = entry.title;
